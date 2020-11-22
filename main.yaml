@@ -46,9 +46,7 @@ Resources:
        'AWS::CloudFormation::Init':
           configSets:
             InstallAndRun:
-	      -Install
-              -Configure
-	  Install:
+	    Install:
 	    packages:
 	      yum:
 		mysql:[]
