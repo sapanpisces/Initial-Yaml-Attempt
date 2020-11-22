@@ -47,7 +47,7 @@ Resources:
           configSets:
             InstallAndRun:
 	    Install:
-	    packages:
+	      packages:
 	      yum:
 		mysql:[]
 		mysql-server: []
