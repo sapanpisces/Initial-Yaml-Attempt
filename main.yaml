@@ -1,0 +1,124 @@
+Parameteres:
+   DBName:
+     Default: MyDatabase
+     Description: MySQL database name
+     Type: String
+     MinLength: '1'
+     MaxLength: '64'
+     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+     ConstraintDescription: must begin with a letter and contain only alphanumeric characters
+   DBUser:
+     NoEcho: 'true'
+     Description: Username for MySQL database access
+     Type: String
+     MinLength: '1'
+     MaxLength: '16'
+     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+     ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+   DBPassword:
+     NoEcho: 'true'
+     Description: Password for MySQL database access
+     Type: String
+     MinLength: '1'
+     MaxLength: '41'
+     AllowedPattern: '[a-zA-Z0-9]*'
+     ConstraintDescription: must contain only alphanumeric characters
+   InstanceType:
+     Description: WebServer EC2 instance type
+     Type: String
+     Default: t2.micro
+   SSHLocation:
+    Description: ' The IP address range that can be used to SSH to the EC2 instances'
+    Default: 0.0.0.0/0
+
+Mappings:
+   AWSInstanceType2Arch:
+     t2.micro:
+     Arch: HVM64
+   AWSRegionArch2AMI:
+     ap-southeast-1:
+     HVM64: ami-a59b49c6
+
+Resources:
+   WebServerInstance:
+     Type: 'AWS::EC2::Instance'
+     metadata:
+       'AWS::CloudFormation::Init':
+          configSets:
+            InstallAndRun:
+	      -Install
+              -Configure
+	  Install:
+	    packages:
+	      yum:
+		mysql:[]
+		mysql-server: []
+		mysql-libs: []
+		httpd: []
+		php: []
+		php-mysql: []
+
+Configure Web:
+   Install:
+     packages:
+       yum:
+         info 'mediawiki*'
+         install mediwaiki
+         files:
+	   /var/www/mediawiki
+
+Configure:
+   commands: !Join 
+     - ''
+     - - 'Create User'
+       - mysqladmin -u wiki -p
+       - !Ref ThisPasswordShouldBeChanged
+       - ''''
+         'CREATE DATABASE '
+       - !Ref Wikidatabase
+       - |
+         ;
+       - 'GRANT ALL ON '
+       - !Ref Wikidatabase
+       - .* TO '
+       - !Ref Wiki
+       - '''@localhost IDENTIFIED BY '''
+       - !Ref DBPassword
+       - 'Flush Privileges'
+       - 'Show Dataases'
+       - 'Show Grants'
+       - !Ref Wiki
+       - |
+         ';
+   mode: '000400'
+   owner: root
+   group: root
+
+services:
+   sysvinit:
+     mysqld:
+       enabled: 'true'
+       ensureRunning: 'true'
+     httpd:
+       enabled: 'true'
+       ensureRunning: 'true'
+
+
+WebServerSecurityGroup:
+   Type: 'AWS::EC2::SecurityGroup'
+     Properties:
+       GroupDescription: Enable HTTP access via port 80
+       SecurityGroupIngress:
+         - IpProtocol: tcp
+           FromPort: '80'
+           ToPort: '80'
+           CidrIp: 0.0.0.0/0
+         - IpProtocol: tcp
+           FromPort: '443'
+           ToPort: '443'
+           CidrIp: 0.0.0.0/0
+	 - IpProtocol: tcp
+           FromPort: '443'
+           ToPort: '443'
+           CidrIP: !Ref SSHLocation
+     
