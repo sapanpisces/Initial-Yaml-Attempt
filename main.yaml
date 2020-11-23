@@ -1,96 +1,77 @@
-Parameteres:
-   DBName:
-     Default: MyDatabase
-     Description: MySQL database name
-     Type: String
-     MinLength: '1'
-     MaxLength: '64'
-     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-     ConstraintDescription: must begin with a letter and contain only alphanumeric characters
-   DBUser:
-     NoEcho: 'true'
-     Description: Username for MySQL database access
-     Type: String
-     MinLength: '1'
-     MaxLength: '16'
-     AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-     ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
-   DBPassword:
-     NoEcho: 'true'
-     Description: Password for MySQL database access
-     Type: String
-     MinLength: '1'
-     MaxLength: '41'
-     AllowedPattern: '[a-zA-Z0-9]*'
-     ConstraintDescription: must contain only alphanumeric characters
-   InstanceType:
-     Description: WebServer EC2 instance type
-     Type: String
-     Default: t2.micro
-   SSHLocation:
-    Description: ' The IP address range that can be used to SSH to the EC2 instances'
-    Default: 0.0.0.0/0
+- name: Deploy on AWS
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Deploy an instance
+      os_server:
+        state: present
+        name: lamp01
+        image: RHEL 8.0
+        key_name: MY_SSH_KEY
+        wait: yes
+        flavor: t2.micro
+        network: public
+        Arch: HVM64
+	AWSRegion: ap-southeast-1
 
-Mappings:
-   AWSInstanceType2Arch:
-     t2.micro:
-     Arch: HVM64
-   AWSRegionArch2AMI:
-     ap-southeast-1:
-     HVM64: ami-a59b49c6
+- name: install apache & php
+  remote_user: root
+  hosts: all
+  become: true
+  become_user: root
+  gather_facts: true
+  tasks:
+    - name: "Install apache"
+      package: name=apache state=present
+    - name: "Install apache-php5"
+      package: name=libapache-mod-php state=present
+    - name: "Install php-cli"
+      package: name=php-cli state=present
+    - name: "Install php-mcrypt"
+      package: name=php-mcrypt state=present
+    - name: "Install php-gd"
+      package: name=php-gd state=present
 
-Resources:
-   WebServerInstance:
-     Type: 'AWS::EC2::Instance'
-     metadata:
-       'AWS::CloudFormation::Init':
-          configSets:
-            InstallAndRun:
-	    Install:
-	      packages:
-	      yum:
-		mysql:[]
-		mysql-server: []
-		mysql-libs: []
-		httpd: []
-		php: []
-		php-mysql: []
 
-Configure Web:
-   Install:
-     packages:
-       yum:
-         info 'mediawiki*'
-         install mediwaiki
-         files:
-	   /var/www/mediawiki
+- name: Install MySQL
+  user: root
+  hosts: all
+  become: True
+  become_user: root
+  vars:
+    MySQL_root_pass: ReplaceWithYourPassword
+  tasks:
+    - name: Set MySQL root password
+      debconf: name="mysql-server" question="mysql-server/root_password" value="{{MySQL_root_pass | quote}}" vtype="password"
+    - name: Confirm MySQL root password
+      debconf: name="mysql-server" question="mysql-server/root_password_again" value="{{MySQL_root_pass | quote}}" vtype="password"
+    - name: test1
+      apt: package={{ item }} state=present force=yes update_cache=yes cache_valid_time=3600
+      when: ansible_os_family == "Debian"
+      with_items:
+        - mysql-server
+        - mysql-client
+        - php 5.5
+    - name: Create MySQL user
+      mysql_user: user="Wiki" state="present" login_password="{{ ThisPasswordShouldBeChanged }}" login_user=root
+    - name: Secures the MySQL root user
+      mysql_user: user="root" password="{{ MySQL_root_pass }}" host="{{ item }}" login_password="{{MySQL_root_pass}}" login_user=root
+      with_items:
+        - 127.0.0.1
+        - localhost
+        - ::1
+        - "{{ ansible_fqdn }}"
+    - name: Removes the MySQL test database
+      mysql_db: db=Wikidatabase state=present login_password="{{ MySQL_root_pass }}" login_user=root 
 
-Configure:
-   commands: !Join 
-     - ''
-     - - 'Create User'
-       - mysqladmin -u wiki -p
-       - !Ref ThisPasswordShouldBeChanged
-       - ''''
-         'CREATE DATABASE '
-       - !Ref Wikidatabase
-       - |
-         ;
-       - 'GRANT ALL ON '
-       - !Ref Wikidatabase
-       - .* TO '
-       - !Ref Wiki
-       - '''@localhost IDENTIFIED BY '''
-       - !Ref DBPassword
-       - 'Flush Privileges'
-       - 'Show Dataases'
-       - 'Show Grants'
-       - !Ref Wiki
-       - |
-         ';
-   mode: '000400'
-   owner: root
-   group: root
+-Name: Configure Wiki
+    - Install:
+    - hosts: all
+    - Stat: present
+    - roles: 
+        mediawiki
+    - file:
+       /var/www/mediawiki
 
 services:
    sysvinit:
@@ -116,7 +97,6 @@ WebServerSecurityGroup:
            ToPort: '443'
            CidrIp: 0.0.0.0/0
 	 - IpProtocol: tcp
-           FromPort: '22'
-           ToPort: '22'
-           CidrIP: !Ref SSHLocation
-     
+           FromPort: '443'
+           ToPort: '443'
+           CidrIP: 0.0.0.0/0
