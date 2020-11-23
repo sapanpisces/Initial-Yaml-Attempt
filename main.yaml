@@ -12,7 +12,7 @@
         flavor: t2.micro
         network: public
         Arch: HVM64
-	Region: ap-southeast-1
+	AWSRegion: ap-southeast-1
 
 - name: install apache & php
   remote_user: root
